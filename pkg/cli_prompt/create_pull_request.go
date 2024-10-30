@@ -3,6 +3,7 @@ package cli_prompt
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -118,23 +119,36 @@ func (p *CreatePullRequest) restForm() *huh.Form {
 				Options((func() []huh.Option[string] {
 					myUserLogin := gh_command.GetMyUserLogin()
 					users := make([]huh.Option[string], 0)
+					userLoginMap := make(map[string]string)
+
+					// Step 1: Map each login to the corresponding name
 					for _, user := range p.assignableUsers {
-						if user.Login == myUserLogin {
-							continue
+						if user.Login != myUserLogin {
+							userLoginMap[user.Login] = user.Name
 						}
+					}
+
+					// Step 2: Collect and sort the logins
+					sortedLogins := make([]string, 0, len(userLoginMap))
+					for login := range userLoginMap {
+						sortedLogins = append(sortedLogins, login)
+					}
+					sort.Strings(sortedLogins)
+
+					// Step 3: Construct `users` in alphabetical order
+					for _, login := range sortedLogins {
+						name := userLoginMap[login]
+
 						format := "%s"
-						if user.Name != "" {
+						if name != "" {
 							format += " (%s)"
 						}
-						spread := []interface{}{user.Login}
-						if user.Name != "" {
-							spread = append(spread, user.Name)
+						spread := []interface{}{login}
+						if name != "" {
+							spread = append(spread, name)
 						}
 
-						users = append(
-							users,
-							huh.NewOption(fmt.Sprintf(format, spread...), user.Login),
-						)
+						users = append(users, huh.NewOption(fmt.Sprintf(format, spread...), login))
 					}
 
 					return users
