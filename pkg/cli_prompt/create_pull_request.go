@@ -21,6 +21,7 @@ type CreatePullRequest struct {
 	headBranch      string
 	title           string
 	body            string
+	reviewers       []string
 }
 
 // initializeBaseInfo method to initialize the base information for creating a pull request
@@ -111,6 +112,34 @@ func (p *CreatePullRequest) restForm() *huh.Form {
 				CharLimit(0).
 				// Calculate the line count of current text and add 5 to it as the height of the text box.
 				WithHeight(strings.Count(p.body, "\n")+5),
+
+			huh.NewMultiSelect[string]().
+				Title("Select reviewers").
+				Options((func() []huh.Option[string] {
+					myUserLogin := gh_command.GetMyUserLogin()
+					users := make([]huh.Option[string], 0)
+					for _, user := range p.assignableUsers {
+						if user.Login == myUserLogin {
+							continue
+						}
+						format := "%s"
+						if user.Name != "" {
+							format += " (%s)"
+						}
+						spread := []interface{}{user.Login}
+						if user.Name != "" {
+							spread = append(spread, user.Name)
+						}
+
+						users = append(
+							users,
+							huh.NewOption(fmt.Sprintf(format, spread...), user.Login),
+						)
+					}
+
+					return users
+				})()...).
+				Value(&p.reviewers),
 		),
 	)
 
@@ -164,4 +193,8 @@ func (p *CreatePullRequest) Run() {
 	fmt.Println(p.title)
 	fmt.Println("===BODY===")
 	fmt.Println(p.body)
+	fmt.Println("===REVIEWERS===")
+	for _, reviewer := range p.reviewers {
+		fmt.Println(reviewer)
+	}
 }
