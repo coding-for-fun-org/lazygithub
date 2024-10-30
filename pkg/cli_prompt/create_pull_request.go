@@ -3,6 +3,7 @@ package cli_prompt
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
@@ -18,11 +19,13 @@ type CreatePullRequest struct {
 	latestBranches  []git_command.ListLatestBranchesResponse
 	baseBranch      string
 	headBranch      string
+	title           string
+	body            string
 }
 
 // initializeBaseInfo method to initialize the base information for creating a pull request
 func (p *CreatePullRequest) initializeBaseInfo() {
-	r := gh_command.Repo{RepoName: "RockRabbit-ai/rockrabbit-web"}
+	r := gh_command.Repo{RepoName: ""}
 	repo := r.Get(gh_command.GetRepoOptions{})
 
 	p.repoOwner = repo.Owner.Login
@@ -84,6 +87,37 @@ func (p *CreatePullRequest) branchForm() *huh.Form {
 	return branchForm
 }
 
+// initializePullRequestTitleAndBody method to initialize the pull request title and body
+func (p *CreatePullRequest) initializePullRequestTitleAndBody() {
+	commits := gh_command.GetBranchCommits(p.repoOwner, p.repoName, p.baseBranch, p.headBranch)
+
+	title, body := getPrePopulatedTitleAndBody(commits)
+	p.title = title
+	p.body = body
+}
+
+func (p *CreatePullRequest) restForm() *huh.Form {
+	restForm := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Enter the pull request title").
+				Value(&p.title),
+
+			huh.NewText().
+				Title("Enter the pull request body").
+				ShowLineNumbers(true).
+				Value(&p.body).
+				// If I pass 0 to WithCharLimit, it will not limit the number of characters.
+				CharLimit(0).
+				// Calculate the line count of current text and add 5 to it as the height of the text box.
+				WithHeight(strings.Count(p.body, "\n")+5),
+		),
+	)
+
+	return restForm
+}
+
+// Run method to run the create pull request prompt
 func (p *CreatePullRequest) Run() {
 	initializeBaseInfo := p.initializeBaseInfo
 	spinner.New().
@@ -92,11 +126,42 @@ func (p *CreatePullRequest) Run() {
 		Run()
 
 	branchForm := p.branchForm()
-	err := branchForm.Run()
-	if err != nil {
-		log.Fatal(err)
+	errBranchForm := branchForm.Run()
+	if errBranchForm != nil {
+		log.Fatal(errBranchForm)
 	}
 
-	fmt.Printf("Head branch: %s\n", p.headBranch)
-	fmt.Printf("Base branch: %s\n", p.baseBranch)
+	// If the user stops the program, we don't want to go to the next form
+	if branchForm.State == huh.StateAborted {
+		fmt.Println("Aborted")
+		return
+	}
+
+	initializePullRequestTitleAndBody := p.initializePullRequestTitleAndBody
+
+	spinner.New().
+		Title("Loading").
+		Action(initializePullRequestTitleAndBody).
+		Run()
+
+	restForm := p.restForm()
+	errRestForm := restForm.Run()
+	if errRestForm != nil {
+		log.Fatal(errRestForm)
+	}
+
+	fmt.Println("===REPO OWNER===")
+	fmt.Println(p.repoOwner)
+	fmt.Println("===REPO NAME===")
+	fmt.Println(p.repoName)
+
+	fmt.Println("===HEAD BRANCH===")
+	fmt.Println(p.headBranch)
+	fmt.Println("===BASE BRANCH===")
+	fmt.Println(p.baseBranch)
+
+	fmt.Println("===TITLE===")
+	fmt.Println(p.title)
+	fmt.Println("===BODY===")
+	fmt.Println(p.body)
 }
