@@ -13,6 +13,7 @@ import (
 )
 
 type CreatePullRequest struct {
+	repoId          string
 	repoOwner       string
 	repoName        string
 	assignableUsers []gh_command.RepoAssignableUser
@@ -30,6 +31,7 @@ func (p *CreatePullRequest) initializeBaseInfo() {
 	r := gh_command.Repo{RepoName: ""}
 	repo := r.Get(gh_command.GetRepoOptions{})
 
+	p.repoId = repo.ID
 	p.repoOwner = repo.Owner.Login
 	p.repoName = repo.Name
 	p.assignableUsers = repo.AssignableUsers
@@ -96,6 +98,15 @@ func (p *CreatePullRequest) initializePullRequestTitleAndBody() {
 	title, body := getPrePopulatedTitleAndBody(commits)
 	p.title = title
 	p.body = body
+}
+
+// initializeReviewers method to initialize the reviewers
+func (p *CreatePullRequest) initializeReviewers() {
+	savedReviewers, err := getLatestReviewers(p.repoId)
+	if err != nil {
+		savedReviewers = []string{}
+	}
+	p.reviewers = savedReviewers
 }
 
 func (p *CreatePullRequest) restForm() *huh.Form {
@@ -183,14 +194,27 @@ func (p *CreatePullRequest) Run() {
 	initializePullRequestTitleAndBody := p.initializePullRequestTitleAndBody
 
 	spinner.New().
-		Title("Loading").
+		Title("Loading title and body").
 		Action(initializePullRequestTitleAndBody).
+		Run()
+
+	initializeReviewers := p.initializeReviewers
+
+	spinner.New().
+		Title("Loading latest reviewers").
+		Action(initializeReviewers).
 		Run()
 
 	restForm := p.restForm()
 	errRestForm := restForm.Run()
 	if errRestForm != nil {
 		log.Fatal(errRestForm)
+	}
+
+	// If the user stops the program, we don't want to go to the next form
+	if restForm.State == huh.StateAborted {
+		fmt.Println("Aborted")
+		return
 	}
 
 	fmt.Println("===REPO OWNER===")
@@ -208,6 +232,10 @@ func (p *CreatePullRequest) Run() {
 	fmt.Println("===BODY===")
 	fmt.Println(p.body)
 	fmt.Println("===REVIEWERS===")
+	err := writeLatestReviewers(p.repoId, p.reviewers)
+	if err != nil {
+		log.Fatal(err)
+	}
 	for _, reviewer := range p.reviewers {
 		fmt.Println(reviewer)
 	}

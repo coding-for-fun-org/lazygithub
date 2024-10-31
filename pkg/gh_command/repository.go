@@ -37,6 +37,7 @@ type GetRepoOptions struct {
 type GetRepoResponse struct {
 	AssignableUsers  []RepoAssignableUser `json:"assignableUsers"`
 	DefaultBranchRef RepoDefaultBranchRef `json:"defaultBranchRef"`
+	ID               string               `json:"id"`
 	Owner            RepoOwner            `json:"owner"`
 	Name             string               `json:"name"`
 }
@@ -52,7 +53,7 @@ func (r *Repo) Get(
 	}
 	if options.Json == "" {
 		args = append(args, "--json")
-		args = append(args, "assignableUsers,defaultBranchRef,owner,name")
+		args = append(args, "assignableUsers,defaultBranchRef,owner,name,id")
 	}
 	// Run the GitHub CLI command and capture the output
 	cmd := exec.Command("gh", args...)
