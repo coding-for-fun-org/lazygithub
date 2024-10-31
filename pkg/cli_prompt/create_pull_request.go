@@ -24,6 +24,7 @@ type CreatePullRequest struct {
 	title           string
 	body            string
 	reviewers       []string
+	isDraft         bool
 }
 
 // initializeBaseInfo method to initialize the base information for creating a pull request
@@ -165,6 +166,14 @@ func (p *CreatePullRequest) restForm() *huh.Form {
 					return users
 				})()...).
 				Value(&p.reviewers),
+
+			huh.NewSelect[bool]().
+				Title("Are you going to create a draft PR?").
+				Options(
+					huh.NewOption("Yes", true),
+					huh.NewOption("No", false),
+				).
+				Value(&p.isDraft),
 		),
 	)
 
