@@ -3,6 +3,7 @@ package cli_prompt
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -12,6 +13,7 @@ import (
 )
 
 type CreatePullRequest struct {
+	repoId          string
 	repoOwner       string
 	repoName        string
 	assignableUsers []gh_command.RepoAssignableUser
@@ -21,6 +23,7 @@ type CreatePullRequest struct {
 	headBranch      string
 	title           string
 	body            string
+	reviewers       []string
 }
 
 // initializeBaseInfo method to initialize the base information for creating a pull request
@@ -28,6 +31,7 @@ func (p *CreatePullRequest) initializeBaseInfo() {
 	r := gh_command.Repo{RepoName: ""}
 	repo := r.Get(gh_command.GetRepoOptions{})
 
+	p.repoId = repo.ID
 	p.repoOwner = repo.Owner.Login
 	p.repoName = repo.Name
 	p.assignableUsers = repo.AssignableUsers
@@ -96,6 +100,15 @@ func (p *CreatePullRequest) initializePullRequestTitleAndBody() {
 	p.body = body
 }
 
+// initializeReviewers method to initialize the reviewers
+func (p *CreatePullRequest) initializeReviewers() {
+	savedReviewers, err := getLatestReviewers(p.repoId)
+	if err != nil {
+		savedReviewers = []string{}
+	}
+	p.reviewers = savedReviewers
+}
+
 func (p *CreatePullRequest) restForm() *huh.Form {
 	restForm := huh.NewForm(
 		huh.NewGroup(
@@ -111,6 +124,47 @@ func (p *CreatePullRequest) restForm() *huh.Form {
 				CharLimit(0).
 				// Calculate the line count of current text and add 5 to it as the height of the text box.
 				WithHeight(strings.Count(p.body, "\n")+5),
+
+			huh.NewMultiSelect[string]().
+				Title("Select reviewers").
+				Options((func() []huh.Option[string] {
+					myUserLogin := gh_command.GetMyUserLogin()
+					users := make([]huh.Option[string], 0)
+					userLoginMap := make(map[string]string)
+
+					// Step 1: Map each login to the corresponding name
+					for _, user := range p.assignableUsers {
+						if user.Login != myUserLogin {
+							userLoginMap[user.Login] = user.Name
+						}
+					}
+
+					// Step 2: Collect and sort the logins
+					sortedLogins := make([]string, 0, len(userLoginMap))
+					for login := range userLoginMap {
+						sortedLogins = append(sortedLogins, login)
+					}
+					sort.Strings(sortedLogins)
+
+					// Step 3: Construct `users` in alphabetical order
+					for _, login := range sortedLogins {
+						name := userLoginMap[login]
+
+						format := "%s"
+						if name != "" {
+							format += " (%s)"
+						}
+						spread := []interface{}{login}
+						if name != "" {
+							spread = append(spread, name)
+						}
+
+						users = append(users, huh.NewOption(fmt.Sprintf(format, spread...), login))
+					}
+
+					return users
+				})()...).
+				Value(&p.reviewers),
 		),
 	)
 
@@ -140,14 +194,27 @@ func (p *CreatePullRequest) Run() {
 	initializePullRequestTitleAndBody := p.initializePullRequestTitleAndBody
 
 	spinner.New().
-		Title("Loading").
+		Title("Loading title and body").
 		Action(initializePullRequestTitleAndBody).
+		Run()
+
+	initializeReviewers := p.initializeReviewers
+
+	spinner.New().
+		Title("Loading latest reviewers").
+		Action(initializeReviewers).
 		Run()
 
 	restForm := p.restForm()
 	errRestForm := restForm.Run()
 	if errRestForm != nil {
 		log.Fatal(errRestForm)
+	}
+
+	// If the user stops the program, we don't want to go to the next form
+	if restForm.State == huh.StateAborted {
+		fmt.Println("Aborted")
+		return
 	}
 
 	fmt.Println("===REPO OWNER===")
@@ -164,4 +231,12 @@ func (p *CreatePullRequest) Run() {
 	fmt.Println(p.title)
 	fmt.Println("===BODY===")
 	fmt.Println(p.body)
+	fmt.Println("===REVIEWERS===")
+	err := writeLatestReviewers(p.repoId, p.reviewers)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, reviewer := range p.reviewers {
+		fmt.Println(reviewer)
+	}
 }

@@ -1,7 +1,11 @@
 package cli_prompt
 
 import (
+	"encoding/csv"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -108,4 +112,114 @@ func getPrePopulatedTitleAndBody(
 	commitFullBody = commitFullBody + linkBody
 
 	return "", commitFullBody
+}
+
+func getReviewersFilePath() (string, error) {
+	fileName := ".__reviewers.csv"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("Failed to get user home directory: %s", err)
+
+		return "", err
+	}
+
+	return filepath.Join(home, fileName), nil
+}
+
+func writeLatestReviewers(repo string, reviewers []string) error {
+	filePath, err := getReviewersFilePath()
+	if err != nil {
+		return err
+	}
+
+	// Open the CSV file
+	file, err := os.Create(filePath)
+	if err != nil {
+		log.Fatalf("Failed to open file: %s", err)
+	}
+	defer file.Close()
+
+	// Initialize the CSV reader
+	reader := csv.NewReader(file)
+
+	// Read all records from the file
+	records, err := reader.ReadAll()
+	if err != nil {
+		log.Fatalf("Failed to read CSV file: %s", err)
+	}
+
+	// Track if repo was found
+	repoFound := false
+
+	// first column is repo name, second column is reviewers
+	// if repo name already exists, update the reviewers
+	// if repo name does not exist, append the repo name and reviewers
+	for i, record := range records {
+		if record[0] == repo {
+			records[i][1] = strings.Join(reviewers, ",")
+			repoFound = true
+			break
+		}
+	}
+
+	// If repo was not found, append a new record
+	if !repoFound {
+		newRecord := []string{repo, strings.Join(reviewers, ",")}
+		records = append(records, newRecord)
+	}
+
+	// Move the file pointer back to the beginning to overwrite the file
+	if _, err := file.Seek(0, 0); err != nil {
+		log.Fatalf("Failed to seek file: %s", err)
+		return err
+	}
+
+	// write the updated records to the file
+	writer := csv.NewWriter(file)
+	err = writer.WriteAll(records)
+	if err != nil {
+		log.Fatalf("Failed to write CSV file: %s", err)
+		return err
+	}
+
+	writer.Flush()
+
+	return writer.Error()
+}
+
+func getLatestReviewers(repo string) ([]string, error) {
+	filePath, err := getReviewersFilePath()
+	if err != nil {
+		return nil, err
+	}
+
+	// Open the CSV file
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Printf("Failed to open file: %s", err)
+		return nil, err
+	}
+	defer file.Close()
+
+	// Initialize the CSV reader
+	reader := csv.NewReader(file)
+
+	// Read all records from the file
+	records, err := reader.ReadAll()
+	if err != nil {
+		log.Printf("Failed to read CSV file: %s", err)
+		return nil, err
+	}
+
+	reviewers := []string{}
+	// first column is repo name, second column is reviewers
+
+	for _, record := range records {
+		if record[0] == repo {
+			reviewers = strings.Split(record[1], ",")
+			break
+		}
+	}
+
+	return reviewers, nil
 }
