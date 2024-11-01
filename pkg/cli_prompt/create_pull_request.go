@@ -3,6 +3,7 @@ package cli_prompt
 import (
 	"fmt"
 	"log"
+	"os/exec"
 	"sort"
 	"strings"
 
@@ -226,26 +227,28 @@ func (p *CreatePullRequest) Run() {
 		return
 	}
 
-	fmt.Println("===REPO OWNER===")
-	fmt.Println(p.repoOwner)
-	fmt.Println("===REPO NAME===")
-	fmt.Println(p.repoName)
-
-	fmt.Println("===HEAD BRANCH===")
-	fmt.Println(p.headBranch)
-	fmt.Println("===BASE BRANCH===")
-	fmt.Println(p.baseBranch)
-
-	fmt.Println("===TITLE===")
-	fmt.Println(p.title)
-	fmt.Println("===BODY===")
-	fmt.Println(p.body)
-	fmt.Println("===REVIEWERS===")
 	err := writeLatestReviewers(p.repoId, p.reviewers)
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, reviewer := range p.reviewers {
-		fmt.Println(reviewer)
+
+	url, err := gh_command.CreatePullRequest(
+		p.repoOwner,
+		p.repoName,
+		gh_command.CreatePullRequestParams{
+			BaseBranch: p.baseBranch,
+			HeadBranch: p.headBranch,
+			Title:      p.title,
+			Body:       p.body,
+			Reviewers:  p.reviewers,
+			IsDraft:    p.isDraft,
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	fmt.Printf("Pull request created successfully: %s\n", url)
+
+	openBrowser(url)
 }

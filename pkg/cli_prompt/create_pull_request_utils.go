@@ -5,12 +5,32 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/coding-for-fun-org/lazygithub/pkg/gh_command"
 )
+
+// openBrowser function to open a URL in the default browser
+func openBrowser(url string) error {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "linux":
+		cmd = exec.Command("xdg-open", url)
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+
+	return cmd.Start()
+}
 
 // extractPatterns function extracts all occurrences of the pattern [A-Z]{1,}-\d{1,} from the input string.
 func extractPatterns(input string) ([]string, error) {
